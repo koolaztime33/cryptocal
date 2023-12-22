@@ -1,142 +1,248 @@
-import React, { useState, useEffect } from 'react';
-import { useIsFocused } from '@react-navigation/native';
-import { Text, View, FlatList, TouchableWithoutFeedback, SafeAreaView, Keyboard } from 'react-native';
-import { initDB, getActiveFiat, getCryptoActiveState } from '../data/db';
-import countriesData from '../data/currency.json';
-import { CurrencyInput } from '../components/CurrencyInput';
-import { fetchCryptoDataFromCoinGecko } from '../components/CryptoData';
-import styles from '../styles';
+import React, { useState, useEffect } from "react";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
+import {
+  Text,
+  View,
+  FlatList,
+  TouchableWithoutFeedback,
+  SafeAreaView,
+  Keyboard,
+  ScrollView,
+} from "react-native";
+import { initDB, getActiveFiat, getCryptoActiveState, getTheme } from "../data/db";
+import countriesData from "../data/currency.json";
+import { CurrencyInput } from "../components/CurrencyInput";
+import { fetchCryptoDataFromCoinGecko } from "../components/CryptoData";
+import styles from "../styles";
+import { AdEventType, BannerAd, InterstitialAd, TestIds, BannerAdSize } from "react-native-google-mobile-ads";
+
+const adUnitId = __DEV__ ? TestIds.INTERSTITIAL : 'ca-app-pub-xxxxxxxxxxxxx/yyyyyyyyyyyyyy';
+const adUnitBannerId = __DEV__ ? TestIds.ADAPTIVE_BANNER : 'ca-app-pub-xxxxxxxxxxxxx/yyyyyyyyyyyyyy';
+
+const interstitial = InterstitialAd.createForAdRequest(adUnitId, {
+  keywords: ['fashion', 'clothing'],
+});
+
+
 export const HomeScreen = () => {
-    const isFocused = useIsFocused();
-    const [inputs, setInputs] = useState({});
-    const [activeCurrencies, setActiveCurrencies] = useState({}); // for storing the active currency data
-    const [rateData, setRateData] = useState({}); // for storing the active currency data
+  const isFocused = useIsFocused();
+  const [inputs, setInputs] = useState("");
+  const [activeCurrencies, setActiveCurrencies] = useState({}); // for storing the active currency data
+  const [listHome, setListHome] = useState([]); // for storing the active currency data
+  const [listCurrency, setListCurrency] = useState([]);
+  const [listPrevCurrency, setPrevListCurrency] = useState([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [cryptoData, setCryptoData] = useState([]);
+  const [prevCryptoData, setPrevCryptoData] = useState([]);
+  const [activeCryptos, setActiveCryptos] = useState({});
+  const [theme, setTheme] = React.useState(false);
 
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [cryptoData, setCryptoData] = useState([]);
-    const [activeCryptos, setActiveCryptos] = useState({});
-    useEffect(() => {
-        initDB(); 
-        if (isFocused) {
-            // handleRefresh();
+  useEffect(() => {
+    getActiveTheme()
+  }, [])
 
-            (async () => {
-                try {
-                    const activeFiatFromSQLite = await getActiveFiat();
-                    const CryptoActiveState = await getCryptoActiveState(); // Implement this function
+  const getActiveTheme = async () => {
+    const value = await getTheme();
+    setTheme(value)
+  }
 
-                    const activeCryptoSymbols = Object.keys(CryptoActiveState).filter(crypto => CryptoActiveState[crypto]);
-
-                    const dataFromCoinGecko = await fetchCryptoDataFromCoinGecko(activeCryptoSymbols);
-                  
-                    setCryptoData(dataFromCoinGecko);
-                    setActiveCurrencies(activeFiatFromSQLite);
-                    setActiveCryptos(CryptoActiveState);
-
-                } catch (error) {
-                    console.error("Failed to fetch active data from SQLite:", error);
-                }
-            })();
+  useEffect(() => {
+    initDB();
+    getCurrency();
+    if (isFocused) {
+      if (loaded) {
+        try {
+          interstitial.show()
+        } catch (error) {
+          // when not loaded
         }
-    }, [isFocused]);
-  // useEffect(() => {
-        // const newRateData = mergeCryptoDataIntoRates(cryptoData, rateData);
-        // setRateData(newRateData);
-      // }, [cryptoData, rateData]);
-    
-    // This function will merge the symbol and current_price from cryptoDataList into rateData.
-    const mergeCryptoDataIntoRates = (cryptoDataList, rateData) => {
-        // Create a new rateData structure to not mutate the original one
-        let updatedRateData = { ...rateData };
-        // Loop over the cryptoDataList
-        cryptoDataList.forEach(crypto => {
-            // We assume that the currency code in rateData matches the crypto symbol converted to uppercase.
-            let currencyCode = crypto.symbol.toUpperCase();
+      }
+      (async () => {
+        try {
+          const activeFiatFromSQLite = await getActiveFiat();
+          const CryptoActiveState = await getCryptoActiveState(); // Implement this function
+          const activeCryptoSymbols = Object.keys(CryptoActiveState).filter(
+            (crypto) => CryptoActiveState[crypto]
+          );
+          const dataFromCoinGecko = await fetchCryptoDataFromCoinGecko(
+            activeCryptoSymbols
+          );
+          setCryptoData(
+            dataFromCoinGecko.map((item) => {
+              return {
+                ...item,
+                current_price: (1 / item.current_price).toString(),
+              };
+            })
+          );
+          setPrevCryptoData(
+            dataFromCoinGecko.map((item) => {
+              return {
+                ...item,
+                current_price: (1 / item.current_price).toString(),
+              };
+            })
+          );
+          setActiveCurrencies(activeFiatFromSQLite);
+          setActiveCryptos(CryptoActiveState);
+        } catch (error) {
+          console.error("Failed to fetch active data from SQLite:", error);
+        }
+      })();
+    }
+  }, [isFocused]);
 
-            // Check if the currency code exists in the rateData
-            if (updatedRateData.data[currencyCode]) {
-                // Merge the symbol and current_price into the rateData
-                updatedRateData.data[currencyCode] = {
-                    ...updatedRateData.data[currencyCode], // Keep the original rate data
-                    symbol: crypto.symbol, // Add the symbol from cryptoDataList
-                    current_price: crypto.current_price // Add the current_price from cryptoDataList
-                };
-            }
-        });
+  const getCurrency = async () => {
+    if (listCurrency.length == 0) {
+      const currencyData = await fetch(
+        "https://api.currencyfreaks.com/v2.0/rates/latest?apikey=5e0aba36695f4eccaf0c441420ed5cbd"
+      );
+      const currencyDataJson = await currencyData.json();
+      const currencyRates = currencyDataJson.rates;
+      const currencyList = Object.keys(currencyRates).map((key) => {
+        return {
+          currency: key,
+          rate: currencyRates[key],
+        };
+      });
+      setListCurrency(currencyList);
+      setPrevListCurrency(currencyList);
+    }
+  };
 
-        return updatedRateData;
-    };
+  useEffect(() => {
+    getActiveData();
+  }, [activeCurrencies, activeCryptos]);
 
-    const getActiveData = () => {
-        const fiatData = Object.entries(activeCurrencies)
-            .filter(([, isActive]) => isActive)
-            .map(([id]) => countriesData.find(c => c.id === parseInt(id)))
-            .filter(Boolean);
-        const cryptoDataList = Object.entries(activeCryptos)
-            .filter(([, isActive]) => isActive)
-            .map(([id]) => cryptoData.find(c => c.id === id))
-            .filter(Boolean);
-        // const newRateData = mergeCryptoDataIntoRates(cryptoDataList, rateData);
-        // setRateData(newRateData);
-        return [...fiatData, ...cryptoDataList];
-    };
+  // This function will merge the symbol and current_price from cryptoDataList into rateData.
+  const mergeCryptoDataIntoRates = (cryptoDataList, item, listCurrency) => {
+    if (
+      listCurrency.find((currency) => currency.currency === item.currency?.code)
+    ) {
+      return listCurrency.find(
+        (currency) => currency.currency === item.currency?.code
+      ).rate;
+    }
+    if (cryptoDataList.find((items) => items.symbol == item.symbol)) {
+      return cryptoDataList
+        .find((items) => items.symbol == item.symbol)
+        .current_price?.toString();
+    }
+    return "0";
+  };
 
+  const checlSymbol = (cryptoDataList, item, listCurrency) => {
+    if (
+      listCurrency.find((currency) => currency.currency === item.currency?.code)
+    ) {
+      return listCurrency.find(
+        (currency) => currency.currency === item.currency?.code
+      ).currency;
+    }
+    if (cryptoDataList.find((items) => items.symbol == item.symbol)) {
+      return cryptoDataList.find((items) => items.symbol == item.symbol).symbol;
+    }
+    return "usd";
+  };
 
+  const getActiveData = () => {
+    const fiatData = Object.entries(activeCurrencies)
+      .filter(([, isActive]) => isActive)
+      .map(([id]) => countriesData.find((c) => c.id === parseInt(id)))
+      .filter(Boolean);
+    const cryptoDataList = Object.entries(activeCryptos)
+      .filter(([, isActive]) => isActive)
+      .map(([id]) => cryptoData.find((c) => c.id === id))
+      .filter(Boolean);
+    setListHome([...fiatData, ...cryptoDataList]);
+  };
 
-    // const handleRefresh = () => {
-    //     setIsRefreshing(true);
+  const handleInputChange = (discount, symbol) => {
+    const currencyList = listCurrency.map((item) => {
+      const prevData = listPrevCurrency.find(
+        (currency) => currency.currency === item.currency
+      );
+      const results = prevData.rate * discount;
+      // console.log(results);
+      return {
+        ...item,
+        rate: results.toString(),
+      };
+    });
+    setCryptoData((val) => {
+      const newData = val.map((item) => {
+        if (item.symbol === symbol) return item;
 
-    //     getActiveData()
-    //     setIsRefreshing(false);
+        const prevData = prevCryptoData.find((crypto) => crypto.id === item.id);
+        const results = prevData.current_price * discount;
+        return {
+          ...item,
+          current_price: results,
+        };
+      });
+      return newData;
+    });
 
-    // };
-    const handleInputChange = (inputKey, newValue) => {
-        // Assuming inputKey is the currency code for which newValue is being set
-        const baseValue = parseFloat(newValue) || 0;
-        // Update the state with the new value for the inputKey
-        setInputs(prevValues => ({
-            ...prevValues,
-            [inputKey]: baseValue.toString(),
-        }));
+    setListCurrency(currencyList);
+  };
 
-        // Now, convert and update values for all other currencies
-        const newValues = {};
-        Object.keys(inputs).forEach((currencyKey) => {
-            if (currencyKey !== inputKey) {
-                const convertedValue = convertCurrency(baseValue, inputKey, currencyKey);
-                newValues[currencyKey] = convertedValue.toString();
-            }
-        });
+  const [loaded, setLoaded] = useState(false);
 
-        // Update the inputs state with values for all currencies
-        setInputs(prevValues => ({
-            ...prevValues,
-            ...newValues
-        }));
-    };
+  useEffect(() => {
+    interstitial.addAdEventListener(AdEventType.ERROR, (val) => {
+      console.log('====================================');
+      console.log(val);
+      console.log('====================================');
+    });
 
-    return (
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <SafeAreaView style={styles.container}>
-                <View style={styles.header}>
-                    <Text style={styles.headerText}>Crypto Calculator</Text>
-                </View>
-                <View style={styles.content}>
-                    <FlatList
-                        refreshing={isRefreshing} 
-                        data={getActiveData()}
-                        keyExtractor={(item, index) => index.toString()}
-                        renderItem={({ item, index }) => (
-                            <CurrencyInput
-                                countriesData={item}
-                                value={inputs ? inputs.toString() : '0'}
-                                setValue={handleInputChange}
-                                rates={rateData}
-                            />
-                        )}
-                    />
-                </View>
-            </SafeAreaView>
-        </TouchableWithoutFeedback>
-    );
+    const unsubscribe = interstitial.addAdEventListener(AdEventType.LOADED, () => {
+      setLoaded(true);
+    });
+
+    // Start loading the interstitial straight away
+    interstitial.load();
+
+    // Unsubscribe from events on unmount
+    return unsubscribe;
+  }, [isFocused]);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView style={{ backgroundColor: theme ? '#333' : '#fff' }}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme ? '#333' : '#fff' }]}>
+          <View style={styles.content}>
+            <FlatList
+              refreshing={isRefreshing}
+              data={listHome}
+              keyExtractor={(item, index) => index.toString()}
+              renderItem={({ item, index }) => {
+                return (
+                  <CurrencyInput
+                    base={mergeCryptoDataIntoRates(
+                      prevCryptoData,
+                      item,
+                      listPrevCurrency
+                    )}
+                    dark={theme}
+                    countriesData={item}
+                    value={inputs ? inputs.toString() : "0"}
+                    setValue={handleInputChange}
+                    symbol={checlSymbol(prevCryptoData, item, listPrevCurrency)}
+                    rates={mergeCryptoDataIntoRates(
+                      cryptoData,
+                      item,
+                      listCurrency
+                    )}
+                  />
+                );
+              }}
+            />
+          </View>
+        </SafeAreaView>
+      </ScrollView>
+      <View style={{ position: 'absolute', bottom: 0 }}>
+        <BannerAd unitId={adUnitBannerId} size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER} />
+      </View>
+    </View>
+  );
 };

@@ -1,168 +1,210 @@
-import React, { useState } from 'react';
-import { View, TextInput, Keyboard, TouchableOpacity } from 'react-native';
-import { ListItem, Avatar, Text } from 'react-native-elements';
-import styles from '../styles';
-export const CurrencyInput = ({ countriesData, value, setValue,rates }) => {
-    const [childValue, setChildValue] = useState(value);
-    const [keyboardVisible, setKeyboardVisible] = useState(false);
-    const [lastOperation, setLastOperation] = useState(null);
+import React, { useEffect, useRef, useState } from "react";
+import { View, TextInput, Keyboard, TouchableOpacity, Modal, FlatList } from "react-native";
+import { ListItem, Avatar, Text } from "react-native-elements";
+import styles from "../styles";
+import { CalculatorInput } from "react-native-calculator";
 
-    const handleFocus = () => {
-        setKeyboardVisible(true);
-    };
+export const CurrencyInput = ({
+  base,
+  countriesData,
+  value,
+  symbol,
+  setValue,
+  rates,
+  dark
+}) => {
+  const [childValue, setChildValue] = useState(rates);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [isFocused, setIsFocused] = useState(null);
+  let ref = useRef();
+  let count = useRef(0);
+  console.log('====================================');
+  console.log(ref);
+  console.log(count);
+  console.log('====================================');
+  const handleClear = () => {
+    setChildValue("");
+  };
 
-    const handleBlur = () => {
-        setKeyboardVisible(false);
-    };
-    const handleValueChange = newValue => {
-        // Ensure that we update the parent's state with the new value
-        if (!['+', '-', 'x', '÷'].includes(newValue.slice(-1))) {
-            setValue(countriesData.id, newValue);
-        }
-        setChildValue(newValue);
+  const handlePress = (buttonPressed) => {
+    if (buttonPressed === "=") {
+      try {
+        const calculatedResult = eval(childValue.replace(/x/g, '*').replace(/÷/g, '/').trim());
+        setChildValue(calculatedResult.toString());
+        setIsFocused(false)
+        ref.current.setSelection()
+      } catch (error) {
+        console.log(error);
+      }
+    } else {
+      setChildValue((prev) => {
+        return prev + buttonPressed
+      });
+    }
+  };
 
-        // If we're changing the amount, convert and update the values for all other currencies
-        if (!isNaN(newValue)) {
-            // You would get the base currency and the target currency keys from props or state
-            const newConvertedValue = convertCurrency(
-                newValue,
-                countriesData.currencyCode, // This should be the base currency code
-                targetCurrencyCode, // You will need to pass this as a prop or manage it as a state
-            );
-            setValue(targetCurrencyCode, newConvertedValue.toString());
-        }
-    };
-    const handlePress = (val) => {
-        if (val === 'AC') {
-            // Clear everything
-            setChildValue('');
-            setLastOperation(null);
-        } else if (val === '▼') {
-            Keyboard.dismiss();
-        } else if (['+', '-', 'x', '÷'].includes(val)) {
-            if (childValue !== '' && lastOperation === null) {
-                setChildValue(childValue + val);
-                setLastOperation(val);
-            }
-        } else if (val === '=') {
-            if (lastOperation !== null) {
-                computeResult();
-            }
-        } else {
-            // Append the value
-            setChildValue(childValue + val);
-        }
-    };
-    const handleClear = () => {
-        setChildValue(''); // Clear the child value
-        setLastOperation(null); // Reset the last operation
-        setValue(countriesData.id, ''); // Update parent's state
-    };
-    function round(value, decimals) {
-        return Number(Math.round(value + 'e' + decimals) + 'e-' + decimals);
+
+
+
+  function calculatePercentDifference(value1, value2) {
+    // Ensure both values are numeric
+    const numericValue1 = parseFloat(value1);
+    const numericValue2 = parseFloat(value2);
+
+    // Check if the conversion is successful
+    if (isNaN(numericValue1) || isNaN(numericValue2)) {
+      return null;
     }
 
-    const computeResult = () => {
-        let result = childValue.replace(/x/g, '*').replace(/÷/g, '/');
+    // Calculate the percentage difference 0.5 / 1 * 100
+    const percentDifference = (numericValue2 / numericValue1) * 100;
 
-        // Check for division by zero
-        if (/\/0(?![.0-9])/.test(result)) {
-            setChildValue('Error: Division by zero');
-            return;
-        }
+    return percentDifference / 100;
+  }
 
+  useEffect(() => {
+    if (rates != childValue) {
+      if (calculatePercentDifference(base, childValue)) {
         try {
-            result = eval(result); // Ideally, replace with a safer evaluation method
-            // Define the number of decimals for rounding
-            const decimals = 2; // for example, 2 decimal places
-            result = round(result, decimals);
-
-            setChildValue(result.toString());
-            setValue(countriesData.id, result.toString());
+          setValue(calculatePercentDifference(base, childValue), symbol);
         } catch (error) {
-            setChildValue('Error');
+
         }
+      }
+    }
+  }, [childValue]);
 
-        setLastOperation(null);
-    };
-    const convertCurrency = (amount, baseCurrency, targetCurrency) => {
-        if (!amount || !baseCurrency || !targetCurrency || !rateData) return 0;
-//  console.log(amount, baseCurrency, targetCurrency, rateData)
-        // Assuming rateData has a structure where you can access rates like rateData[baseCurrency]
-        const baseRate = rateData[baseCurrency]?.value || 1; // Fallback to 1 if not found
-        const targetRate = rateData[targetCurrency]?.value || 0; // Fallback to 0 if not found
+  useEffect(() => {
+    if (!isFocused) {
+      setChildValue(rates);
+    }
+  }, [rates]);
 
-        // Convert the base amount to USD, then to the target currency
-        const amountInUSD = amount / baseRate;
-        const convertedAmount = amountInUSD * targetRate;
-
-        return convertedAmount;
-    };
-    return (
-        <View>
-            <View style={styles.currencyContainer}>
-                {countriesData.flag ? (
-                    <ListItem bottomDivider>
-                        <Avatar source={{ uri: countriesData.flag }} />
-                        <ListItem.Content>
-                            <ListItem.Title>{countriesData.currency.symbol}</ListItem.Title>
-                            <ListItem.Subtitle>{countriesData.name}</ListItem.Subtitle>
-                        </ListItem.Content>
-                        <TextInput
-                            style={styles.input}
-                            value={childValue}
-                            onChangeText={text => handleValueChange(text)}
-                            showSoftInputOnFocus={false} // Disabling the native keyboard
-                            onFocus={handleFocus}
-                            onBlur={handleBlur}
-                        />
-                    </ListItem>
-                ) : countriesData.image ? (
-                    <ListItem bottomDivider>
-                        <Avatar source={{ uri: countriesData.image }} />
-                        <ListItem.Content>
-                            <ListItem.Title>{countriesData.symbol}</ListItem.Title>
-                            <ListItem.Subtitle>{countriesData.name}</ListItem.Subtitle>
-                        </ListItem.Content>
-                        <TextInput
-                            style={styles.input}
-                            value={childValue}
-                            onChangeText={text => handleValueChange(text)}
-                            showSoftInputOnFocus={false} // Disabling the native keyboard
-                            onFocus={handleFocus}
-                            onBlur={handleBlur}
-                        />
-                    </ListItem>
-                ) : null}
-
-
-            </View>
-            {keyboardVisible && (
-                <View style={styles.keyboardContainer}>
-                    {[
-                        ['7', '8', '9', '+'],
-                        ['4', '5', '6', '-'],
-                        ['1', '2', '3', 'x'],
-                        ['00', '0', '.', '÷'],
-                        ['AC', '=', '▼']
-                    ].map((row, idx) => (
-                        <View key={idx} style={styles.row}>
-                            {row.map(val => (
-                                <TouchableOpacity
-                                    key={val}
-                                    style={styles.button}
-                                    onPress={
-                                        val === 'AC' ? handleClear :
-                                            val === '▼' ? Keyboard.dismiss :
-                                                () => handlePress(val)
-                                    }>
-                                    <Text style={styles.text}>{val}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    ))}
-                </View>
+  return (
+    <View style={{ backgroundColor: '#ff0000' }}>
+      <Modal visible={isFocused} transparent>
+        <View style={{ backgroundColor: '#fff', position: 'absolute', width: '100%', bottom: 0 }}>
+          <FlatList
+            numColumns={4}
+            data={['AC', '+/-', '%', '', '7', '8', '9', '÷', '4', '5', '6', 'x', '1', '2', '3', '-', '00', '0', '.', '+', 'AC', '=', '▼']}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.button}
+                onPress={
+                  item === "AC"
+                    ? handleClear
+                    : item === "▼"
+                      ? () => {
+                        ref.current.setSelection();
+                        setIsFocused(false);
+                      }
+                      : () => handlePress(item)
+                }
+              >
+                <Text style={styles.text}>{item}</Text>
+              </TouchableOpacity>
             )}
+          />
         </View>
-    );
-}; 
+      </Modal>
+      <View style={[styles.currencyContainer]}>
+        {countriesData.flag ? (
+          <View bottomDivider style={{ backgroundColor: '#ff0000' }}>
+            <View
+              style={{
+                flexDirection: "row",
+                width: "100%",
+                height: 70,
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: dark ? "#333" : "#fff",
+                paddingHorizontal: 10,
+              }}
+            >
+              <Avatar source={{ uri: countriesData.flag }} />
+              <View style={{ marginLeft: 5, width: "20%" }}>
+                <ListItem.Content>
+                  <ListItem.Title style={{ color: dark ? '#fff' : '#000' }}>
+                    {countriesData.currency.code}
+                  </ListItem.Title>
+                  <ListItem.Subtitle style={{ color: dark ? '#fff' : '#000' }}>{countriesData.name}</ListItem.Subtitle>
+                </ListItem.Content>
+              </View>
+              <TextInput
+                ref={value => {
+                  count.current = count.current + 1
+                  ref.current = value
+                }}
+                style={[styles.input, { color: dark ? '#fff' : '#000' }]}
+                value={isFocused ? childValue : parseFloat(childValue)?.toFixed(2)}
+                defaultValue={isFocused ? childValue : parseFloat(childValue)?.toFixed(2)}
+                onChangeText={(text) => setChildValue(text)}
+                showSoftInputOnFocus={false} // Disabling the native keyboard
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+              />
+            </View>
+          </View>
+        ) : countriesData.image ? (
+          <ListItem bottomDivider>
+            <View
+              style={{
+                flexDirection: "row",
+                width: "100%",
+                height: 50,
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Avatar source={{ uri: countriesData.image }} />
+              <View style={{ marginLeft: 5, width: "20%" }}>
+                <ListItem.Content>
+                  <ListItem.Title>{countriesData.symbol}</ListItem.Title>
+                  <ListItem.Subtitle>{countriesData.name}</ListItem.Subtitle>
+                </ListItem.Content>
+              </View>
+              <TextInput
+                style={styles.input}
+                value={parseFloat(childValue)?.toFixed(2)}
+                defaultValue={parseFloat(childValue)?.toFixed(2)}
+                onChangeText={(text) => setChildValue(text)}
+                showSoftInputOnFocus={false} // Disabling the native keyboard
+                keyboardType="numeric"
+
+              />
+            </View>
+          </ListItem>
+        ) : null}
+      </View>
+      {keyboardVisible && (
+        <View style={styles.keyboardContainer}>
+          {[
+            ["7", "8", "9", "+"],
+            ["4", "5", "6", "-"],
+            ["1", "2", "3", "x"],
+            ["00", "0", ".", "÷"],
+            ["AC", "=", "▼"],
+          ].map((row, idx) => (
+            <View key={idx} style={styles.row}>
+              {row.map((val) => (
+                <TouchableOpacity
+                  key={val}
+                  style={styles.button}
+                  onPress={
+                    val === "AC"
+                      ? handleClear
+                      : val === "▼"
+                        ? Keyboard.dismiss
+                        : () => handlePress(val)
+                  }
+                >
+                  <Text style={styles.text}>{val}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+};
